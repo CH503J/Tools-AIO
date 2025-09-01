@@ -2,6 +2,7 @@ package com.ch503j.userservice.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.ch503j.userservice.pojo.entity.VisitorUser;
+import com.ch503j.userservice.pojo.vo.UserVO;
 import com.ch503j.userservice.pojo.vo.VisitorUserVO;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -16,4 +17,6 @@ public interface AuthService extends IService<VisitorUser> {
      * @return BaseResponse<VisitorUserVO> 统一响应格式，包含游客用户信息
      */
     VisitorUserVO visitorLogin(HttpServletRequest request, HttpServletResponse response);
+
+    UserVO register(HttpServletRequest request, HttpServletResponse response);
 }

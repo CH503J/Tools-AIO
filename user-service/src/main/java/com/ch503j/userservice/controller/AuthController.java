@@ -29,4 +29,10 @@ public class AuthController {
     public BaseResponse<VisitorUserVO> visitorLogin(HttpServletRequest request, HttpServletResponse response) {
         return BaseResponse.success(visitorUserService.visitorLogin(request, response));
     }
+
+    @PostMapping("/register")
+    public BaseResponse<?> register(HttpServletRequest request, HttpServletResponse response) {
+
+        return BaseResponse.success();
+    }
 }
