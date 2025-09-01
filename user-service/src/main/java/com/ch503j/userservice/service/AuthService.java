@@ -1,13 +1,13 @@
 package com.ch503j.userservice.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
-import com.ch503j.userservice.pojo.entity.VisitorUser;
+import com.ch503j.userservice.pojo.dto.UserDTO;
+import com.ch503j.userservice.pojo.entity.User;
 import com.ch503j.userservice.pojo.vo.UserVO;
-import com.ch503j.userservice.pojo.vo.VisitorUserVO;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-public interface AuthService extends IService<VisitorUser> {
+public interface AuthService extends IService<User> {
 
     /**
      * 游客登录接口
@@ -16,7 +16,7 @@ public interface AuthService extends IService<VisitorUser> {
      * @param response HTTP响应对象，用于设置返回信息
      * @return BaseResponse<VisitorUserVO> 统一响应格式，包含游客用户信息
      */
-    VisitorUserVO visitorLogin(HttpServletRequest request, HttpServletResponse response);
+    UserVO visitorLogin(HttpServletRequest request, HttpServletResponse response);
 
-    UserVO register(HttpServletRequest request, HttpServletResponse response);
+    UserVO register(UserDTO userDTO, HttpServletRequest request, HttpServletResponse response);
 }

@@ -1,7 +1,8 @@
 package com.ch503j.userservice.controller;
 
 import com.ch503j.common.pojo.dto.BaseResponse;
-import com.ch503j.userservice.pojo.vo.VisitorUserVO;
+import com.ch503j.userservice.pojo.dto.UserDTO;
+import com.ch503j.userservice.pojo.vo.UserVO;
 import com.ch503j.userservice.service.AuthService;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     @Resource
-    private AuthService visitorUserService;
+    private AuthService authService;
 
 
     /**
@@ -26,13 +27,12 @@ public class AuthController {
      * @return BaseResponse<VisitorUserVO> 统一响应格式，包含游客用户信息
      */
     @PostMapping("/visitorLogin")
-    public BaseResponse<VisitorUserVO> visitorLogin(HttpServletRequest request, HttpServletResponse response) {
-        return BaseResponse.success(visitorUserService.visitorLogin(request, response));
+    public BaseResponse<UserVO> visitorLogin(HttpServletRequest request, HttpServletResponse response) {
+        return BaseResponse.success(authService.visitorLogin(request, response));
     }
 
     @PostMapping("/register")
-    public BaseResponse<?> register(HttpServletRequest request, HttpServletResponse response) {
-
-        return BaseResponse.success();
+    public BaseResponse<?> register(UserDTO userDto, HttpServletRequest request, HttpServletResponse response) {
+        return BaseResponse.success(authService.register(userDto, request, response));
     }
 }

@@ -2,10 +2,10 @@ package com.ch503j.userservice.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ch503j.common.exception.BusinessException;
-import com.ch503j.userservice.mapper.VisitorUserMapper;
-import com.ch503j.userservice.pojo.entity.VisitorUser;
+import com.ch503j.userservice.mapper.UserMapper;
+import com.ch503j.userservice.pojo.dto.UserDTO;
+import com.ch503j.userservice.pojo.entity.User;
 import com.ch503j.userservice.pojo.vo.UserVO;
-import com.ch503j.userservice.pojo.vo.VisitorUserVO;
 import com.ch503j.userservice.service.AuthService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -19,28 +19,31 @@ import java.util.UUID;
 
 @Service
 @Slf4j
-public class AuthServiceImpl extends ServiceImpl<VisitorUserMapper, VisitorUser> implements AuthService {
+public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements AuthService {
     @Override
-    public VisitorUserVO visitorLogin(HttpServletRequest request, HttpServletResponse response) {
+    public UserVO visitorLogin(HttpServletRequest request, HttpServletResponse response) {
         // 1. 获取 visitorId
         String visitorId = getVisitorIdFromCookie(request);
 
-        // 2. 获取 IP
+        // 2. 获取客户端 IP
         String ip = resolveClientIp(request);
         log.info("访问者 IP: {}", ip);
 
-        // 3. 查库 or 新建
-        VisitorUser visitorUser = findOrCreateVisitor(visitorId);
+        // 3. 查库或新建
+        User user = findOrCreateVisitor(visitorId, ip);
 
-        // 4. 设置 / 刷新 cookie
-        refreshVisitorCookie(response, visitorUser.getVisitorId());
+        // 4. 设置/刷新 cookie
+        refreshVisitorCookie(response, user.getVisitorId());
 
-        return new VisitorUserVO(visitorUser.getUserId(), visitorUser.getVisitorId());
-    }
+        UserVO userVO = new UserVO();
+        userVO.setUserId(user.getUserId());
+        userVO.setVisitorId(user.getVisitorId());
+        userVO.setUsername(user.getUsername());
+        userVO.setRole(user.getRole());
+        userVO.setStatus(user.getStatus());
 
-    @Override
-    public UserVO register(HttpServletRequest request, HttpServletResponse response) {
-        return null;
+        // 5. 返回 UserVO
+        return userVO;
     }
 
     /**
@@ -61,11 +64,7 @@ public class AuthServiceImpl extends ServiceImpl<VisitorUserMapper, VisitorUser>
      * 解析客户端 IP
      */
     private String resolveClientIp(HttpServletRequest request) {
-        String[] headers = {
-                "X-Forwarded-For",
-                "Proxy-Client-IP",
-                "WL-Proxy-Client-IP"
-        };
+        String[] headers = {"X-Forwarded-For", "Proxy-Client-IP", "WL-Proxy-Client-IP"};
         for (String header : headers) {
             String ip = request.getHeader(header);
             if (ip != null && !ip.isEmpty() && !"unknown".equalsIgnoreCase(ip)) {
@@ -76,25 +75,28 @@ public class AuthServiceImpl extends ServiceImpl<VisitorUserMapper, VisitorUser>
     }
 
     /**
-     * 查库或新建 VisitorUser
+     * 查库或新建游客用户
      */
-    private VisitorUser findOrCreateVisitor(String visitorId) {
+    private User findOrCreateVisitor(String visitorId, String ip) {
+        User user = null;
+
         if (visitorId != null) {
-            VisitorUser visitorUser = lambdaQuery().eq(VisitorUser::getVisitorId, visitorId).one();
-            if (visitorUser != null) {
-                visitorUser.setLastSeen(LocalDateTime.now());
-                updateById(visitorUser);
-                return visitorUser;
+            user = lambdaQuery().eq(User::getVisitorId, visitorId).one();
+            if (user != null) {
+                user.setLastSeen(LocalDateTime.now());
+                user.setLastIp(ip); // 更新最新 IP
+                updateById(user);
+                return user;
             }
-            // cookie 有但数据库没 → 抛业务异常 or 生成新访客
-            log.warn("Cookie 中的 visitorId={} 在数据库不存在，重新生成", visitorId);
+            log.warn("Cookie 中 visitorId={} 在数据库不存在，将重新生成", visitorId);
         }
 
-        // 没 cookie 或查不到 → 生成新的
+        // 没 cookie 或查不到 → 生成新的游客账号
         String newVisitorId = UUID.randomUUID().toString();
-        VisitorUser visitorUser = createVisitor(newVisitorId);
+        User visitorUser = createVisitor(newVisitorId, ip);
+
         if (!save(visitorUser)) {
-            throw new BusinessException("保存访客信息失败");
+            throw new BusinessException("保存游客信息失败");
         }
         return visitorUser;
     }
@@ -106,16 +108,31 @@ public class AuthServiceImpl extends ServiceImpl<VisitorUserMapper, VisitorUser>
         Cookie cookie = new Cookie("visitorId", visitorId);
         cookie.setPath("/");
         cookie.setHttpOnly(true);
-        cookie.setMaxAge(7 * 24 * 3600);
+        cookie.setMaxAge(7 * 24 * 3600); // 7天
         response.addCookie(cookie);
     }
 
-    // 封装创建 VisitorUser 的方法
-    private VisitorUser createVisitor(String visitorId) {
-        VisitorUser visitorUser = new VisitorUser();
-        visitorUser.setVisitorId(visitorId);
-        visitorUser.setCreateTime(LocalDateTime.now());
-        visitorUser.setLastSeen(LocalDateTime.now());
-        return visitorUser;
+    /**
+     * 封装创建游客用户的方法
+     */
+    private User createVisitor(String visitorId, String ip) {
+        User user = new User();
+        user.setVisitorId(visitorId);
+        user.setRole("VISITOR");
+        user.setStatus(1);
+        user.setCreateTime(LocalDateTime.now());
+        user.setUpdateTime(LocalDateTime.now());
+        user.setLastSeen(LocalDateTime.now());
+        user.setLastIp(ip);
+        return user;
+    }
+
+    @Override
+    public UserVO register(UserDTO userDTO, HttpServletRequest request, HttpServletResponse response) {
+
+        if (lambdaQuery().eq(User::getPhone, userDTO.getPhone()).one() != null) {
+            throw new BusinessException("手机号已注册");
+        }
+        return null;
     }
 }

@@ -6,7 +6,7 @@
         <groupId>com.ch503j</groupId>
         <artifactId>Tools-AIO</artifactId>
         <version>1.0-SNAPSHOT</version>
-        <relativePath/>
+        <relativePath>../pom.xml</relativePath>
     </parent>
     <artifactId>picture-service</artifactId>
     <version>0.0.1-SNAPSHOT</version>

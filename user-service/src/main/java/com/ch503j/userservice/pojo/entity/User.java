@@ -65,4 +65,14 @@ public class User {
      * 访客id
      */
     private String visitorId;
+
+    /**
+     * 最近登录时间
+     */
+    private LocalDateTime lastSeen;
+
+    /**
+     * 最近登录ip
+     */
+    private String lastIp;
 }
