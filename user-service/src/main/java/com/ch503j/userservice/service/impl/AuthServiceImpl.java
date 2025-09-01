@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ch503j.common.exception.BusinessException;
 import com.ch503j.userservice.mapper.VisitorUserMapper;
 import com.ch503j.userservice.pojo.entity.VisitorUser;
+import com.ch503j.userservice.pojo.vo.UserVO;
 import com.ch503j.userservice.pojo.vo.VisitorUserVO;
 import com.ch503j.userservice.service.AuthService;
 import jakarta.servlet.http.Cookie;
@@ -35,6 +36,11 @@ public class AuthServiceImpl extends ServiceImpl<VisitorUserMapper, VisitorUser>
         refreshVisitorCookie(response, visitorUser.getVisitorId());
 
         return new VisitorUserVO(visitorUser.getUserId(), visitorUser.getVisitorId());
+    }
+
+    @Override
+    public UserVO register(HttpServletRequest request, HttpServletResponse response) {
+        return null;
     }
 
     /**
