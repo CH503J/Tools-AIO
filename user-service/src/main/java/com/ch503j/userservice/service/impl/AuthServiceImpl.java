@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ch503j.common.enums.RoleEnum;
 import com.ch503j.common.exception.BusinessException;
-import com.ch503j.common.utils.IdGenerator;
 import com.ch503j.userservice.mapper.UserMapper;
 import com.ch503j.userservice.pojo.dto.UserDTO;
 import com.ch503j.userservice.pojo.entity.User;
@@ -15,8 +14,12 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ObjectUtils;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
@@ -88,7 +91,7 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
      * 查库或新建游客用户
      */
     private User findOrCreateVisitor(String visitorId, String ip) {
-        User user = null;
+        User user;
 
         if (visitorId != null) {
             user = lambdaQuery().eq(User::getVisitorId, visitorId).one();
@@ -128,7 +131,7 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
     private User createVisitor(String visitorId, String ip) {
         User user = new User();
         user.setVisitorId(visitorId);
-        user.setRole("VISITOR");
+        user.setRole(RoleEnum.VISITOR.getRole());
         user.setStatus(1);
         user.setCreateTime(LocalDateTime.now());
         user.setUpdateTime(LocalDateTime.now());
@@ -138,30 +141,82 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public UserVO register(UserDTO userDTO, HttpServletRequest request, HttpServletResponse response) {
         String visitorId = getVisitorIdFromCookie(request);
-        User user = userMapper.selectOne(new QueryWrapper<User>().eq("visitor_id", visitorId));
-        if(!ObjectUtils.isEmpty(user)){
-            user.setUserId(userDTO.getUserId());
-            user.setUsername(userDTO.getUsername());
-            user.setPhone(userDTO.getPhone());
-            user.setPassword(userDTO.getPassword());
-            user.setUpdateTime(LocalDateTime.now());
-            user.setRole(RoleEnum.USER.name());
-            userMapper.updateById(user);
-        }else {
-            user = new User();
-            user.setVisitorId(visitorId);
-            user.setUserId(userDTO.getUserId());
-            user.setUsername(userDTO.getUsername());
-            user.setPhone(userDTO.getPhone());
-            user.setPassword(userDTO.getPassword());
-            user.setRole(RoleEnum.USER.name()); // 默认游客
-            user.setStatus(1);
-            user.setCreateTime(LocalDateTime.now());
-            user.setUpdateTime(LocalDateTime.now());
-            userMapper.insert(user);
+        if (!StringUtils.hasText(visitorId)) {
+            throw new BusinessException("visitorId 缺失");
         }
-        return null;
+
+        // 根据 visitorId 查已有游客
+        User user = userMapper.selectOne(new QueryWrapper<User>()
+                .eq("visitor_id", visitorId));
+
+        String ip = resolveClientIp(request);
+
+        try {
+            if (user != null) {
+                // ====== 路径1：已有游客 → 升级/完善资料 ======
+                // 先做唯一性校验：同表中是否已有相同 user_id / visitor_id（排除当前这条）
+                hasUniqueUser(userDTO.getUserId(), visitorId, userDTO.getPhone(), user.getId());
+
+                // 更新字段（注意别覆盖主键/创建时间/visitorId）
+                if (userDTO.getUserId() != null) user.setUserId(userDTO.getUserId());
+                if (StringUtils.hasText(userDTO.getUsername())) user.setUsername(userDTO.getUsername());
+                if (StringUtils.hasText(userDTO.getPhone())) user.setPhone(userDTO.getPhone());
+                if (StringUtils.hasText(userDTO.getPassword())) user.setPassword(userDTO.getPassword());
+                user.setRole(RoleEnum.USER.name()); // 升级为正式用户
+                user.setUpdateTime(LocalDateTime.now());
+                user.setLastIp(ip);
+                user.setLastSeen(LocalDateTime.now());
+
+                userMapper.updateById(user);
+            } else {
+                // ====== 路径2：直接注册（但同样携带了 visitorId） ======
+                // 插入前唯一性校验：不能有相同 user_id / visitor_id（不排除任何行）
+                hasUniqueUser(userDTO.getUserId(), visitorId, userDTO.getPhone(), null);
+
+                user = new User();
+                BeanUtils.copyProperties(userDTO, user);
+
+                user.setVisitorId(visitorId);
+                user.setRole(RoleEnum.USER.name());
+                user.setStatus(1);
+                user.setCreateTime(LocalDateTime.now());
+                user.setUpdateTime(LocalDateTime.now());
+                user.setLastIp(ip);
+                user.setLastSeen(LocalDateTime.now());
+
+
+                userMapper.insert(user);
+            }
+        } catch (DuplicateKeyException ex) {
+            // 并发下可能仍被唯一索引拦截，这里给前端更友好的提示
+            throw new BusinessException("注册冲突：userId 或 visitorId 已存在，请更换后重试");
+        }
+
+        UserVO userVO = new UserVO();
+        BeanUtils.copyProperties(user, userVO);
+
+        return userVO;
+    }
+
+    private void hasUniqueUser(String userId, String visitorId, String phone, Long excludeId) {
+        checkUnique("visitor_id", visitorId, excludeId, "该游客用户已存在，请更换浏览器环境再试");
+        checkUnique("user_id", userId, excludeId, "用户ID已存在");
+        checkUnique("phone", phone, excludeId, "手机号已存在");
+    }
+
+
+    private void checkUnique(String column, String value, Long excludeId, String message) {
+        if (ObjectUtils.isEmpty(value)) {
+            return;
+        }
+        long count = userMapper.selectCount(new QueryWrapper<User>()
+                .eq(column, value)
+                .ne(excludeId != null, "id", excludeId));
+        if (count > 0) {
+            throw new BusinessException(message);
+        }
     }
 }

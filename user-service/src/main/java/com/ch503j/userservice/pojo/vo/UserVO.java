@@ -13,8 +13,6 @@ import lombok.experimental.Accessors;
 @Accessors(chain = true)
 public class UserVO {
 
-    private Long id;
-
     private String userId;
 
     private String username;

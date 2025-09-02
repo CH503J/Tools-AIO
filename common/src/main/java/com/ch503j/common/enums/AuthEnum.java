@@ -1,5 +1,8 @@
 package com.ch503j.common.enums;
 
+import lombok.Getter;
+
+@Getter
 public enum AuthEnum {
 
     USER_NOT_EXIST("用户不存在"),
