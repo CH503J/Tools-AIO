@@ -1,17 +1,22 @@
 package com.ch503j.userservice.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.ch503j.common.enums.RoleEnum;
 import com.ch503j.common.exception.BusinessException;
+import com.ch503j.common.utils.IdGenerator;
 import com.ch503j.userservice.mapper.UserMapper;
 import com.ch503j.userservice.pojo.dto.UserDTO;
 import com.ch503j.userservice.pojo.entity.User;
 import com.ch503j.userservice.pojo.vo.UserVO;
 import com.ch503j.userservice.service.AuthService;
+import jakarta.annotation.Resource;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.ObjectUtils;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
@@ -20,6 +25,11 @@ import java.util.UUID;
 @Service
 @Slf4j
 public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements AuthService {
+
+    @Resource
+    private UserMapper userMapper;
+
+
     @Override
     public UserVO visitorLogin(HttpServletRequest request, HttpServletResponse response) {
         // 1. 获取 visitorId
@@ -129,9 +139,28 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
 
     @Override
     public UserVO register(UserDTO userDTO, HttpServletRequest request, HttpServletResponse response) {
-
-        if (lambdaQuery().eq(User::getPhone, userDTO.getPhone()).one() != null) {
-            throw new BusinessException("手机号已注册");
+        String visitorId = getVisitorIdFromCookie(request);
+        User user = userMapper.selectOne(new QueryWrapper<User>().eq("visitor_id", visitorId));
+        if(!ObjectUtils.isEmpty(user)){
+            user.setUserId(userDTO.getUserId());
+            user.setUsername(userDTO.getUsername());
+            user.setPhone(userDTO.getPhone());
+            user.setPassword(userDTO.getPassword());
+            user.setUpdateTime(LocalDateTime.now());
+            user.setRole(RoleEnum.USER.name());
+            userMapper.updateById(user);
+        }else {
+            user = new User();
+            user.setVisitorId(visitorId);
+            user.setUserId(userDTO.getUserId());
+            user.setUsername(userDTO.getUsername());
+            user.setPhone(userDTO.getPhone());
+            user.setPassword(userDTO.getPassword());
+            user.setRole(RoleEnum.USER.name()); // 默认游客
+            user.setStatus(1);
+            user.setCreateTime(LocalDateTime.now());
+            user.setUpdateTime(LocalDateTime.now());
+            userMapper.insert(user);
         }
         return null;
     }
