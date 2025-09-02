@@ -140,6 +140,17 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
         return user;
     }
 
+    /**
+     * 用户注册接口，支持游客升级为正式用户或直接注册。
+     * 根据请求中的 visitorId 判断是走“游客升级”路径还是“直接注册”路径。
+     * 注册过程中会校验 userId、visitorId 和手机号的唯一性，并记录客户端 IP 及最后访问时间。
+     *
+     * @param userDTO  用户注册信息传输对象，包含 userId、username、phone、password 等字段
+     * @param request  HTTP 请求对象，用于获取 visitorId 和客户端 IP
+     * @param response HTTP 响应对象（当前未使用，保留扩展性）
+     * @return UserVO 用户视图对象，包含注册或更新后的用户基本信息
+     * @throws BusinessException 当 visitorId 缺失或违反唯一性约束时抛出业务异常
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public UserVO register(UserDTO userDTO, HttpServletRequest request, HttpServletResponse response) {
@@ -148,7 +159,7 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
             throw new BusinessException("visitorId 缺失");
         }
 
-        // 根据 visitorId 查已有游客
+        // 根据 visitorId 查找是否已有对应的游客用户
         User user = userMapper.selectOne(new QueryWrapper<User>()
                 .eq("visitor_id", visitorId));
 
@@ -157,10 +168,10 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
         try {
             if (user != null) {
                 // ====== 路径1：已有游客 → 升级/完善资料 ======
-                // 先做唯一性校验：同表中是否已有相同 user_id / visitor_id（排除当前这条）
+                // 检查除当前用户外，是否有重复的 userId、visitorId 或 phone
                 hasUniqueUser(userDTO.getUserId(), visitorId, userDTO.getPhone(), user.getId());
 
-                // 更新字段（注意别覆盖主键/创建时间/visitorId）
+                // 更新用户资料（不覆盖主键、创建时间、visitorId）
                 if (userDTO.getUserId() != null) user.setUserId(userDTO.getUserId());
                 if (StringUtils.hasText(userDTO.getUsername())) user.setUsername(userDTO.getUsername());
                 if (StringUtils.hasText(userDTO.getPhone())) user.setPhone(userDTO.getPhone());
@@ -173,7 +184,7 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
                 userMapper.updateById(user);
             } else {
                 // ====== 路径2：直接注册（但同样携带了 visitorId） ======
-                // 插入前唯一性校验：不能有相同 user_id / visitor_id（不排除任何行）
+                // 插入前进行唯一性校验，确保 userId、visitorId 和 phone 唯一
                 hasUniqueUser(userDTO.getUserId(), visitorId, userDTO.getPhone(), null);
 
                 user = new User();
@@ -186,7 +197,6 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
                 user.setUpdateTime(LocalDateTime.now());
                 user.setLastIp(ip);
                 user.setLastSeen(LocalDateTime.now());
-
 
                 userMapper.insert(user);
             }
@@ -201,20 +211,44 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
         return userVO;
     }
 
+    /**
+     * 检查用户信息的唯一性
+     *
+     * @param userId 用户ID，用于检查用户ID的唯一性
+     * @param visitorId 游客ID，用于检查游客身份的唯一性
+     * @param phone 手机号码，用于检查手机号的唯一性
+     * @param excludeId 排除的ID，检查时排除此ID的记录
+     */
     private void hasUniqueUser(String userId, String visitorId, String phone, Long excludeId) {
+        // 检查游客ID的唯一性
         checkUnique("visitor_id", visitorId, excludeId, "该游客用户已存在，请更换浏览器环境再试");
+        // 检查用户ID的唯一性
         checkUnique("user_id", userId, excludeId, "用户ID已存在");
+        // 检查手机号的唯一性
         checkUnique("phone", phone, excludeId, "手机号已存在");
     }
 
 
+    /**
+     * 检查指定列的值是否唯一
+     *
+     * @param column 要检查的列名
+     * @param value 要检查的值
+     * @param excludeId 排除的ID，用于更新时排除自身记录
+     * @param message 唯一性校验失败时的错误信息
+     */
     private void checkUnique(String column, String value, Long excludeId, String message) {
+        // 如果值为空，则不进行唯一性校验
         if (ObjectUtils.isEmpty(value)) {
             return;
         }
+
+        // 查询指定列值相同的记录数量，排除指定ID的记录
         long count = userMapper.selectCount(new QueryWrapper<User>()
                 .eq(column, value)
                 .ne(excludeId != null, "id", excludeId));
+
+        // 如果存在相同值的记录，则抛出业务异常
         if (count > 0) {
             throw new BusinessException(message);
         }
