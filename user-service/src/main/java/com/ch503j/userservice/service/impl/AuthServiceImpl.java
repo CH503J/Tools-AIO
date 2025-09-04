@@ -60,6 +60,82 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
     }
 
     /**
+     * 用户注册接口，支持游客升级为正式用户或直接注册。
+     * 根据请求中的 visitorId 判断是走“游客升级”路径还是“直接注册”路径。
+     * 注册过程中会校验 userId、visitorId 和手机号的唯一性，并记录客户端 IP 及最后访问时间。
+     *
+     * @param userDTO  用户注册信息传输对象，包含 userId、username、phone、password 等字段
+     * @param request  HTTP 请求对象，用于获取 visitorId 和客户端 IP
+     * @param response HTTP 响应对象（当前未使用，保留扩展性）
+     * @return UserVO 用户视图对象，包含注册或更新后的用户基本信息
+     * @throws BusinessException 当 visitorId 缺失或违反唯一性约束时抛出业务异常
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public UserVO register(UserDTO userDTO, HttpServletRequest request, HttpServletResponse response) {
+        String visitorId = getVisitorIdFromCookie(request);
+        if (!StringUtils.hasText(visitorId)) {
+            throw new BusinessException("visitorId 缺失");
+        }
+
+        // 根据 visitorId 查找是否已有对应的游客用户
+        User user = userMapper.selectOne(new QueryWrapper<User>()
+                .eq("visitor_id", visitorId));
+
+        String ip = resolveClientIp(request);
+
+        try {
+            if (user != null) {
+                // ====== 路径1：已有游客 → 升级/完善资料 ======
+                // 检查除当前用户外，是否有重复的 userId、visitorId 或 phone
+                hasUniqueUser(userDTO.getUserId(), visitorId, userDTO.getPhone(), user.getId());
+
+                // 更新用户资料（不覆盖主键、创建时间、visitorId）
+                if (userDTO.getUserId() != null) user.setUserId(userDTO.getUserId());
+                if (StringUtils.hasText(userDTO.getUsername())) user.setUsername(userDTO.getUsername());
+                if (StringUtils.hasText(userDTO.getPhone())) user.setPhone(userDTO.getPhone());
+                if (StringUtils.hasText(userDTO.getPassword())) user.setPassword(userDTO.getPassword());
+                user.setRole(RoleEnum.USER.name()); // 升级为正式用户
+                user.setUpdateTime(LocalDateTime.now());
+                user.setLastIp(ip);
+                user.setLastSeen(LocalDateTime.now());
+
+                userMapper.updateById(user);
+            } else {
+                // ====== 路径2：直接注册（但同样携带了 visitorId） ======
+                // 插入前进行唯一性校验，确保 userId、visitorId 和 phone 唯一
+                hasUniqueUser(userDTO.getUserId(), visitorId, userDTO.getPhone(), null);
+
+                user = new User();
+                BeanUtils.copyProperties(userDTO, user);
+
+                user.setVisitorId(visitorId);
+                user.setRole(RoleEnum.USER.name());
+                user.setStatus(1);
+                user.setCreateTime(LocalDateTime.now());
+                user.setUpdateTime(LocalDateTime.now());
+                user.setLastIp(ip);
+                user.setLastSeen(LocalDateTime.now());
+
+                userMapper.insert(user);
+            }
+        } catch (DuplicateKeyException ex) {
+            // 并发下可能仍被唯一索引拦截，这里给前端更友好的提示
+            throw new BusinessException("注册冲突：userId 或 visitorId 已存在，请更换后重试");
+        }
+
+        UserVO userVO = new UserVO();
+        BeanUtils.copyProperties(user, userVO);
+
+        return userVO;
+    }
+
+    @Override
+    public UserVO login(UserDTO userDto, HttpServletRequest request, HttpServletResponse response) {
+        return null;
+    }
+
+    /**
      * 从 Cookie 获取 visitorId
      */
     private String getVisitorIdFromCookie(HttpServletRequest request) {
@@ -140,76 +216,7 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
         return user;
     }
 
-    /**
-     * 用户注册接口，支持游客升级为正式用户或直接注册。
-     * 根据请求中的 visitorId 判断是走“游客升级”路径还是“直接注册”路径。
-     * 注册过程中会校验 userId、visitorId 和手机号的唯一性，并记录客户端 IP 及最后访问时间。
-     *
-     * @param userDTO  用户注册信息传输对象，包含 userId、username、phone、password 等字段
-     * @param request  HTTP 请求对象，用于获取 visitorId 和客户端 IP
-     * @param response HTTP 响应对象（当前未使用，保留扩展性）
-     * @return UserVO 用户视图对象，包含注册或更新后的用户基本信息
-     * @throws BusinessException 当 visitorId 缺失或违反唯一性约束时抛出业务异常
-     */
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public UserVO register(UserDTO userDTO, HttpServletRequest request, HttpServletResponse response) {
-        String visitorId = getVisitorIdFromCookie(request);
-        if (!StringUtils.hasText(visitorId)) {
-            throw new BusinessException("visitorId 缺失");
-        }
 
-        // 根据 visitorId 查找是否已有对应的游客用户
-        User user = userMapper.selectOne(new QueryWrapper<User>()
-                .eq("visitor_id", visitorId));
-
-        String ip = resolveClientIp(request);
-
-        try {
-            if (user != null) {
-                // ====== 路径1：已有游客 → 升级/完善资料 ======
-                // 检查除当前用户外，是否有重复的 userId、visitorId 或 phone
-                hasUniqueUser(userDTO.getUserId(), visitorId, userDTO.getPhone(), user.getId());
-
-                // 更新用户资料（不覆盖主键、创建时间、visitorId）
-                if (userDTO.getUserId() != null) user.setUserId(userDTO.getUserId());
-                if (StringUtils.hasText(userDTO.getUsername())) user.setUsername(userDTO.getUsername());
-                if (StringUtils.hasText(userDTO.getPhone())) user.setPhone(userDTO.getPhone());
-                if (StringUtils.hasText(userDTO.getPassword())) user.setPassword(userDTO.getPassword());
-                user.setRole(RoleEnum.USER.name()); // 升级为正式用户
-                user.setUpdateTime(LocalDateTime.now());
-                user.setLastIp(ip);
-                user.setLastSeen(LocalDateTime.now());
-
-                userMapper.updateById(user);
-            } else {
-                // ====== 路径2：直接注册（但同样携带了 visitorId） ======
-                // 插入前进行唯一性校验，确保 userId、visitorId 和 phone 唯一
-                hasUniqueUser(userDTO.getUserId(), visitorId, userDTO.getPhone(), null);
-
-                user = new User();
-                BeanUtils.copyProperties(userDTO, user);
-
-                user.setVisitorId(visitorId);
-                user.setRole(RoleEnum.USER.name());
-                user.setStatus(1);
-                user.setCreateTime(LocalDateTime.now());
-                user.setUpdateTime(LocalDateTime.now());
-                user.setLastIp(ip);
-                user.setLastSeen(LocalDateTime.now());
-
-                userMapper.insert(user);
-            }
-        } catch (DuplicateKeyException ex) {
-            // 并发下可能仍被唯一索引拦截，这里给前端更友好的提示
-            throw new BusinessException("注册冲突：userId 或 visitorId 已存在，请更换后重试");
-        }
-
-        UserVO userVO = new UserVO();
-        BeanUtils.copyProperties(user, userVO);
-
-        return userVO;
-    }
 
     /**
      * 检查用户信息的唯一性

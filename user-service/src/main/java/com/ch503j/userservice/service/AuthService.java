@@ -19,4 +19,6 @@ public interface AuthService extends IService<User> {
     UserVO visitorLogin(HttpServletRequest request, HttpServletResponse response);
 
     UserVO register(UserDTO userDTO, HttpServletRequest request, HttpServletResponse response);
+
+    UserVO login(UserDTO userDto, HttpServletRequest request, HttpServletResponse response);
 }

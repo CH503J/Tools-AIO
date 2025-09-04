@@ -31,8 +31,21 @@ public class AuthController {
         return BaseResponse.success(authService.visitorLogin(request, response));
     }
 
+    /**
+     * 用户注册接口
+     *
+     * @param userDto  用户注册信息传输对象，包含用户名、手机号、账号和密码
+     * @param request  HTTP请求对象，用于获取客户端信息
+     * @param response HTTP响应对象，用于设置返回信息
+     * @return BaseResponse<UserVO> 统一响应格式，包含注册成功后的用户信息
+     */
     @PostMapping("/register")
-    public BaseResponse<?> register(UserDTO userDto, HttpServletRequest request, HttpServletResponse response) {
+    public BaseResponse<UserVO> register(UserDTO userDto, HttpServletRequest request, HttpServletResponse response) {
         return BaseResponse.success(authService.register(userDto, request, response));
+    }
+
+    @PostMapping("/login")
+    public BaseResponse<UserVO> login(UserDTO userDto, HttpServletRequest request, HttpServletResponse response){
+        return BaseResponse.success(authService.login(userDto, request, response));
     }
 }
