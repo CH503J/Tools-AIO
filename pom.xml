@@ -16,6 +16,7 @@
         <module>picture-service</module>
         <module>document-service</module>
         <module>user-service</module>
+        <module>workflow</module>
     </modules>
 
     <properties>
@@ -26,6 +27,13 @@
 
     <dependencyManagement>
         <dependencies>
+
+            <!-- Flowable 核心 (Spring Boot 3.x 兼容版本) -->
+            <dependency>
+                <groupId>org.flowable</groupId>
+                <artifactId>flowable-spring-boot-starter-process</artifactId>
+                <version>7.0.0.M2</version>
+            </dependency>
 
             <!-- 通用模块 -->
             <dependency>

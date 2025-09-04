@@ -1,0 +1,15 @@
+server:
+  port: 20001
+
+spring:
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/tools-aio?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: 1234
+
+flowable:
+  # 自动建表（第一次启动会在数据库建 30+ 张表）
+  database-schema-update: true
+  # 调试时先关掉异步执行器，避免后台偷偷跑任务
+  async-executor-activate: false

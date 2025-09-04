@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             xmlns:flowable="http://flowable.org/bpmn"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://www.flowable.org/processdef">
+
+    <process id="demoProcess1" name="Demo流程" isExecutable="true">
+        <!-- 流程开始 -->
+        <startEvent id="startEvent" name="开始"></startEvent>
+
+        <!-- 用户任务1 -->
+        <userTask id="task1" name="提交申请" flowable:assignee="alice"></userTask>
+
+        <!-- 用户任务2 -->
+        <userTask id="task2" name="经理审批" flowable:assignee="bob"></userTask>
+
+        <!-- 结束 -->
+        <endEvent id="endEvent" name="结束"></endEvent>
+
+        <!-- 顺序流 -->
+        <sequenceFlow id="flow1" sourceRef="startEvent" targetRef="task1"></sequenceFlow>
+        <sequenceFlow id="flow2" sourceRef="task1" targetRef="task2"></sequenceFlow>
+        <sequenceFlow id="flow3" sourceRef="task2" targetRef="endEvent"></sequenceFlow>
+    </process>
+</definitions>
