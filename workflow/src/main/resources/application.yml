@@ -13,3 +13,4 @@ flowable:
   database-schema-update: true
   # 调试时先关掉异步执行器，避免后台偷偷跑任务
   async-executor-activate: false
+  history-level: full

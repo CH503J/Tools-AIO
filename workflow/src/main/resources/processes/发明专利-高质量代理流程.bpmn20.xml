@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:flowable="http://flowable.org/bpmn" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC" xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI" typeLanguage="http://www.w3.org/2001/XMLSchema" expressionLanguage="http://www.w3.org/1999/XPath" targetNamespace="http://www.flowable.org/processdef" exporter="Flowable Open Source Modeler" exporterVersion="6.8.0">
+  <process id="PatentProcess" name="发明专利-高质量代理流程" isExecutable="true">
+    <startEvent id="startEvent" name="开始" flowable:formFieldValidation="true"></startEvent>
+    <userTask id="task_businessStart" name="商务发起" flowable:candidateGroups="shangwu-group,kefu-group,shangwu-leader-group,kefu-leader-group" flowable:formFieldValidation="true">
+    </userTask>
+    <sequenceFlow id="flow_start_to_business" sourceRef="startEvent" targetRef="task_businessStart"></sequenceFlow>
+    <subProcess id="sub_研发" name="研发子流程">
+      <userTask id="task_研发主管分配" name="研发主管分配" flowable:candidateGroups="yanfa-leader-group" flowable:formFieldValidation="true">
+
+      </userTask>
+      <userTask id="task_研发经办人" name="研发经办人产出" flowable:candidateUsers="${assigneeUserId}" flowable:formFieldValidation="true"></userTask>
+      <endEvent id="yanfaEndEvent" name="研发子流程结束"></endEvent>
+      <startEvent id="yanfaStartEvent" name="研发子流程开始" flowable:formFieldValidation="true"></startEvent>
+      <exclusiveGateway id="yanfa_approve" name="研发审稿通过？"></exclusiveGateway>
+      <userTask id="task_研发主管审核" name="研发主管审核" flowable:candidateGroups="yanfa-leader-group" flowable:isApproveTask="true" flowable:formFieldValidation="true">
+      </userTask>
+      <sequenceFlow id="flow_研发分配_to_经办人" sourceRef="task_研发主管分配" targetRef="task_研发经办人"></sequenceFlow>
+      <sequenceFlow id="sid-F36D163A-D2DA-4DF4-95A2-88A01C9D0B82" sourceRef="yanfaStartEvent" targetRef="task_研发主管分配"></sequenceFlow>
+      <sequenceFlow id="sid-9ECD0708-0D3B-4064-8A7B-EF89BBA2DA21" sourceRef="yanfa_approve" targetRef="yanfaEndEvent">
+        <conditionExpression xsi:type="tFormalExpression"><![CDATA[${approve==true}]]></conditionExpression>
+      </sequenceFlow>
+      <sequenceFlow id="sid-3E811B8A-B6E9-41D0-9053-7C7D432BDBE8" sourceRef="task_研发经办人" targetRef="task_研发主管审核"></sequenceFlow>
+      <sequenceFlow id="sid-11AB4F17-CF05-4DEB-B3E6-63D8BAF301DE" sourceRef="task_研发主管审核" targetRef="yanfa_approve"></sequenceFlow>
+      <sequenceFlow id="sid-6C472A82-AA12-43E4-A94E-867CFB01634D" sourceRef="yanfa_approve" targetRef="task_研发经办人">
+        <conditionExpression xsi:type="tFormalExpression"><![CDATA[${approve==false}]]></conditionExpression>
+      </sequenceFlow>
+    </subProcess>
+    <sequenceFlow id="flow_business_to_研发" sourceRef="task_businessStart" targetRef="sub_研发"></sequenceFlow>
+    <subProcess id="sub_代理" name="代理子流程">
+      <userTask id="task_代理主管分配" name="代理主管分配" flowable:candidateGroups="daili-leader-group" flowable:formFieldValidation="true">
+
+      </userTask>
+      <userTask id="task_代理经办人" name="代理经办人产出" flowable:candidateUsers="${assigneeUserId}" flowable:formFieldValidation="true"></userTask>
+      <userTask id="task_代理主管审核" name="代理主管审核" flowable:candidateGroups="daili-leader-group" flowable:isApproveTask="true" flowable:formFieldValidation="true">
+
+      </userTask>
+      <endEvent id="dailiEndEvent" name="代理子流程结束"></endEvent>
+      <startEvent id="dailiStartEvent" name="代理子流程开始" flowable:formFieldValidation="true"></startEvent>
+      <exclusiveGateway id="daili_approve" name="代理审稿通过？"></exclusiveGateway>
+      <sequenceFlow id="flow_代理分配_to_经办人" sourceRef="task_代理主管分配" targetRef="task_代理经办人"></sequenceFlow>
+      <sequenceFlow id="sid-B971B71E-8749-4240-A298-CAE693FCA23E" sourceRef="dailiStartEvent" targetRef="task_代理主管分配"></sequenceFlow>
+      <sequenceFlow id="sid-ECFC120E-96D0-442B-9D30-056558AFFC44" sourceRef="task_代理主管审核" targetRef="daili_approve"></sequenceFlow>
+      <sequenceFlow id="sid-AB8CBFBB-878A-43A2-B280-B1F3A2DB69C5" sourceRef="task_代理经办人" targetRef="task_代理主管审核"></sequenceFlow>
+      <sequenceFlow id="sid-74928BAC-3D3A-470F-9375-517F8EC1AE64" sourceRef="daili_approve" targetRef="dailiEndEvent">
+        <conditionExpression xsi:type="tFormalExpression"><![CDATA[${approve==true}]]></conditionExpression>
+      </sequenceFlow>
+      <sequenceFlow id="sid-9D6012C3-0375-4448-800A-7B81BDC55DF3" sourceRef="daili_approve" targetRef="task_代理经办人">
+        <conditionExpression xsi:type="tFormalExpression"><![CDATA[${approve==false}]]></conditionExpression>
+      </sequenceFlow>
+    </subProcess>
+    <userTask id="task_商务定稿" name="商务定稿" flowable:candidateGroups="shangwu-leader-group,shangwu-group" flowable:formFieldValidation="true">
+
+    </userTask>
+    <userTask id="task_客服" name="客服" flowable:candidateGroups="kefu-leader-group,kefu-group" flowable:formFieldValidation="true">
+    </userTask>
+    <endEvent id="endEvent" name="结束"></endEvent>
+    <sequenceFlow id="flow_品控_to_商务" sourceRef="sid-2CB75BC6-CC42-43BC-AE56-B0067D92FDCC" targetRef="task_商务定稿"></sequenceFlow>
+    <sequenceFlow id="flow_代理_to_品控" sourceRef="sub_代理" targetRef="sid-2CB75BC6-CC42-43BC-AE56-B0067D92FDCC"></sequenceFlow>
+    <userTask id="sid-2CB75BC6-CC42-43BC-AE56-B0067D92FDCC" name="品控审稿" flowable:candidateGroups="pinkong-leader-group" flowable:formFieldValidation="true">
+
+    </userTask>
+    <userTask id="sid-E5CE4CFE-DD9B-4347-BDBA-91C358176C30" name="发改提交" flowable:candidateGroups="fagai-leader-group" flowable:formFieldValidation="true">
+
+    </userTask>
+    <sequenceFlow id="flow_研发_to_代理" sourceRef="sub_研发" targetRef="sub_代理"></sequenceFlow>
+    <sequenceFlow id="flow_客服_to_发改" sourceRef="task_客服" targetRef="sid-E5CE4CFE-DD9B-4347-BDBA-91C358176C30"></sequenceFlow>
+    <sequenceFlow id="flow_发改_to_end" sourceRef="sid-E5CE4CFE-DD9B-4347-BDBA-91C358176C30" targetRef="endEvent"></sequenceFlow>
+    <sequenceFlow id="flow_商务_to_客服" sourceRef="task_商务定稿" targetRef="task_客服"></sequenceFlow>
+  </process>
+</definitions>
