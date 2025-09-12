@@ -1,8 +1,8 @@
 package com.ch503j.workflow.controller;
 
 import com.ch503j.common.pojo.dto.BaseResponse;
-import com.ch503j.workflow.pojo.dto.HistoryDto;
 import com.ch503j.workflow.pojo.dto.TaskDto;
+import com.ch503j.workflow.pojo.vo.HistoryVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.bpmn.model.BpmnModel;
@@ -11,12 +11,13 @@ import org.flowable.bpmn.model.UserTask;
 import org.flowable.engine.*;
 import org.flowable.engine.history.HistoricActivityInstance;
 import org.flowable.engine.runtime.ProcessInstance;
+import org.flowable.engine.task.Comment;
+import org.flowable.task.api.DelegationState;
 import org.flowable.task.api.Task;
+import org.flowable.task.api.history.HistoricTaskInstance;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -89,8 +90,10 @@ public class WorkflowController {
     @GetMapping("/candidate/{userId}")
     public BaseResponse<List<TaskDto>> getCandidateTasks(@PathVariable String userId) {
         List<Task> tasks = taskService.createTaskQuery()
-                .taskCandidateUser(userId)   // 用户作为候选人能看到的任务
-                .taskUnassigned()            // 未被认领
+                .or()
+                .taskAssignee(userId)        // 已认领的任务（分配给我）
+                .taskCandidateUser(userId)   // 未认领的候选任务
+                .endOr()
                 .orderByTaskCreateTime().asc()
                 .list();
 
@@ -115,49 +118,65 @@ public class WorkflowController {
 
         return BaseResponse.success(dtoList);
     }
+
 
     /**
-     * 查询经办人待办任务（针对经办人）
+     * 转办任务（通过在主任务下挂载子任务来实现）
+     * Flowable 7.0.0.M2 版本
      *
-     * @param userId 用户ID
-     * @return 用户可见的待办任务列表
+     * @param taskId           待办任务id
+     * @param ownerId          当前委托人id（通常是主管）
+     * @param delegateToUserId 被委派人id
      */
-    @GetMapping("/my-tasks/{userId}")
-    public BaseResponse<List<TaskDto>> getMyTasks(@PathVariable String userId) {
-        List<Task> tasks = taskService.createTaskQuery()
-                .taskAssignee(userId)   // 查询已认领的任务
-                .orderByTaskCreateTime().asc()
-                .list();
+    @PostMapping("/delegate")
+    public BaseResponse<String> delegateTask(
+            @RequestParam String taskId,
+            @RequestParam String ownerId,
+            @RequestParam String delegateToUserId
+    ) {
+        // 查询当前任务
+        Task task = taskService.createTaskQuery().taskId(taskId).singleResult();
+        if (task == null) {
+            return BaseResponse.fail("任务不存在或已完成");
+        }
 
-        List<TaskDto> dtoList = tasks.stream().map(t -> {
-            TaskDto dto = new TaskDto();
-            dto.setTaskId(t.getId());
-            dto.setTaskName(t.getName());
-            dto.setAssignee(t.getAssignee());
-            dto.setCreateTime(t.getCreateTime());
-            dto.setProcessInstanceId(t.getProcessInstanceId());
-            dto.setProcessDefinitionId(t.getProcessDefinitionId());
+        // 设置 owner（委托人）
+        taskService.setOwner(taskId, ownerId);
 
-            // 查 businessKey
-            ProcessInstance pi = runtimeService.createProcessInstanceQuery()
-                    .processInstanceId(t.getProcessInstanceId())
-                    .singleResult();
-            if (pi != null) {
-                dto.setBusinessKey(pi.getBusinessKey());
-            }
-            return dto;
-        }).collect(Collectors.toList());
+        // 执行委托操作
+        taskService.delegateTask(taskId, delegateToUserId);
 
-        return BaseResponse.success(dtoList);
+        // 添加批注，方便历史查询展示“转办痕迹”
+        String processInstanceId = task.getProcessInstanceId();
+        String message = String.format("任务由 %s 转办给 %s", ownerId, delegateToUserId);
+        taskService.addComment(taskId, processInstanceId, message);
+
+        return BaseResponse.success("转办成功");
     }
 
+
+    /**
+     * 提交任务（审批）
+     * taskId 和 userId 必传，variables 可选
+     * nextAssignee 在研发主管分配和代理主管分配时必传
+     * approve 在主管审核稿件时必传
+     *
+     * @param taskId       待办任务id
+     * @param userId       审批人id
+     * @param variables    提交时携带的信息（审批人）
+     * @param nextAssignee 指定的产出节点经办候选人（研发人、代理人）
+     * @param approve      审稿是否通过
+     * @param comment      提交时备注
+     * @return 提交结果
+     */
     @PostMapping("/complete")
     public BaseResponse<String> completeTask(
             @RequestParam String taskId,
             @RequestParam String userId,
             @RequestParam(required = false) Map<String, Object> variables,
-            @RequestParam(required = false) String nextAssignee, // 新增：下一节点经办人
-            @RequestParam(required = false) Boolean approve
+            @RequestParam(required = false) String nextAssignee, // 下一节点经办人
+            @RequestParam(required = false) Boolean approve,
+            @RequestParam(required = false) String comment // 提交备注
     ) {
 
         // 1. 查询任务
@@ -166,21 +185,33 @@ public class WorkflowController {
             return BaseResponse.fail("任务不存在或已完成");
         }
 
-        // 2. 获取流程模型
+        // 2. 如果有批注，先加批注
+        if (comment != null && !comment.isEmpty()) {
+            taskService.addComment(taskId, task.getProcessInstanceId(), comment);
+        }
+
+        // 3. 将委托任务转换为普通任务（如果是委托任务）
+        if (task.getDelegationState() != null && task.getDelegationState() == DelegationState.PENDING) {
+            // 清空 owner
+            task.setOwner(null);
+            // 清空委托状态，使其变为普通任务
+            task.setDelegationState(null);
+            taskService.saveTask(task);
+        }
+
+        // 4. 获取流程模型
         BpmnModel bpmnModel = repositoryService.getBpmnModel(task.getProcessDefinitionId());
         FlowElement flowElement = bpmnModel.getMainProcess().getFlowElement(task.getTaskDefinitionKey());
 
-        // 3. 校验是否是审批任务
+        // 5. 审核任务逻辑
         if (flowElement instanceof UserTask) {
             UserTask userTask = (UserTask) flowElement;
             String isApproveTask = userTask.getAttributeValue("http://flowable.org/bpmn", "isApproveTask");
 
             if ("true".equalsIgnoreCase(isApproveTask)) {
-                // 审核任务必须传递 approve 参数
                 if (approve == null) {
                     return BaseResponse.fail("审批任务必须提供 approve 参数");
                 }
-
                 if (variables == null) {
                     variables = new HashMap<>();
                 }
@@ -188,20 +219,18 @@ public class WorkflowController {
             }
         }
 
-        // 1. 如果指定了下一节点 assignee，则先把它放入流程变量
+        // 6. 指定下一节点 assignee
         if (nextAssignee != null && !nextAssignee.isEmpty()) {
             if (variables == null) {
                 variables = new HashMap<>();
             }
-            // 这里的 key 要和 userTask 的 assignee 表达式一致
             variables.put("assigneeUserId", nextAssignee);
         }
 
-
-        // 2. 认领任务
+        // 7. 认领任务
         taskService.claim(taskId, userId);
 
-        // 3. 完成任务，携带流程变量
+        // 8. 完成任务
         if (variables != null && !variables.isEmpty()) {
             taskService.complete(taskId, variables);
         } else {
@@ -218,24 +247,78 @@ public class WorkflowController {
      * @return 历史流转节点列表
      */
     @GetMapping("/history/{processInstanceId}")
-    public BaseResponse<List<HistoryDto>> getProcessHistory(@PathVariable String processInstanceId) {
-        List<HistoricActivityInstance> historyList = historyService
+    public BaseResponse<List<HistoryVO>> getProcessHistory(@PathVariable String processInstanceId) {
+
+        List<HistoryVO> dtoList = new ArrayList<>();
+
+        // === 活动历史（节点执行） ===
+        List<HistoricActivityInstance> activityList = historyService
                 .createHistoricActivityInstanceQuery()
                 .processInstanceId(processInstanceId)
                 .orderByHistoricActivityInstanceStartTime().asc()
-                .orderByHistoricActivityInstanceId().asc()
                 .list();
 
-        List<HistoryDto> dtoList = historyList.stream().map(h -> {
-            HistoryDto dto = new HistoryDto();
+        for (HistoricActivityInstance h : activityList) {
+            HistoryVO dto = new HistoryVO();
             dto.setActivityId(h.getActivityId());
             dto.setActivityName(h.getActivityName());
             dto.setActivityType(h.getActivityType());
             dto.setAssignee(h.getAssignee());
             dto.setStartTime(h.getStartTime());
             dto.setEndTime(h.getEndTime());
-            return dto;
-        }).collect(Collectors.toList());
+            dto.setActionType("activity");
+            dto.setTaskId(h.getTaskId());
+            dto.setExecutionId(h.getExecutionId());
+            dto.setProcessDefinitionId(h.getProcessDefinitionId());
+            dtoList.add(dto);
+        }
+
+        // === 任务历史（任务维度，能看到转办/完成等） ===
+        List<HistoricTaskInstance> taskList = historyService
+                .createHistoricTaskInstanceQuery()
+                .processInstanceId(processInstanceId)
+                .orderByHistoricTaskInstanceStartTime().asc()
+                .list();
+
+        for (HistoricTaskInstance t : taskList) {
+            HistoryVO dto = new HistoryVO();
+            dto.setActivityId(t.getTaskDefinitionKey());
+            dto.setActivityName(t.getName());
+            dto.setActivityType("userTask");
+            dto.setAssignee(t.getAssignee());
+            dto.setStartTime(t.getStartTime());
+            dto.setEndTime(t.getEndTime());
+            dto.setActionType("task");
+            dto.setTaskId(t.getId());
+            dto.setExecutionId(t.getExecutionId());
+            dto.setProcessDefinitionId(t.getProcessDefinitionId());
+            dto.setOwner(t.getOwner());
+            dtoList.add(dto);
+        }
+
+        // === 批注历史（转办/委派/审批意见等） ===
+        List<Comment> commentList = taskService.getProcessInstanceComments(processInstanceId);
+        for (Comment c : commentList) {
+            HistoryVO dto = new HistoryVO();
+            dto.setActivityId(c.getTaskId());
+            dto.setActivityName("批注");
+            dto.setActivityType("comment");
+            dto.setAssignee(c.getUserId());
+            dto.setStartTime(c.getTime());
+            dto.setEndTime(null);
+            dto.setActionType("comment");
+            dto.setTaskId(c.getTaskId());
+            dto.setExecutionId(null); // 批注没有 executionId
+            dto.setProcessDefinitionId(null);
+            dto.setComment(c.getFullMessage());
+            dtoList.add(dto);
+        }
+
+        // === 统一排序（按时间线） ===
+        dtoList.sort(Comparator.comparing(
+                HistoryVO::getStartTime,
+                Comparator.nullsLast(Comparator.naturalOrder())
+        ));
 
         return BaseResponse.success(dtoList);
     }
