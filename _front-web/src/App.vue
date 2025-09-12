@@ -1,85 +1,59 @@
+<!-- src/App.vue -->
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
-import HelloWorld from './components/HelloWorld.vue'
+import { ref, computed, watch } from 'vue'
+import { RouterView } from 'vue-router'
+import {
+  NConfigProvider,
+  NButton,
+  darkTheme,
+  lightTheme
+} from 'naive-ui'
+
+// 读 localStorage（如果没有则默认暗色）
+const stored = localStorage.getItem('isDark')
+const isDark = ref(stored ? stored === 'true' : true)
+
+// 计算出要传给 NConfigProvider 的 theme 对象
+const theme = computed(() => (isDark.value ? darkTheme : lightTheme))
+
+// 监听变化并持久化（方便刷新后保留）
+watch(isDark, (v) => {
+  console.log('[theme] isDark ->', v)
+  localStorage.setItem('isDark', v ? 'true' : 'false')
+})
 </script>
 
 <template>
-  <header>
-    <img alt="Vue logo" class="logo" src="@/assets/logo.svg" width="125" height="125" />
+  <!-- 使用 PascalCase 组件名，确保 <NConfigProvider> 是你导入的组件 -->
+  <NConfigProvider :theme="theme">
+    <div id="app-root">
+      <!-- 固定在右上角的主题切换按钮 -->
+      <div class="theme-toggle">
+        <NButton size="small" @click="isDark = !isDark">
+          {{ isDark ? '🌙 暗色' : '☀️ 亮色' }}
+        </NButton>
+      </div>
 
-    <div class="wrapper">
-      <HelloWorld msg="Tools-AIO" />
-
-      <nav>
-        <RouterLink to="/">Home</RouterLink>
-        <RouterLink to="/about">About</RouterLink>
-      </nav>
+      <!-- 页面路由视图 -->
+      <RouterView />
     </div>
-  </header>
-
-  <RouterView />
+  </NConfigProvider>
 </template>
 
-<style scoped>
-header {
-  line-height: 1.5;
-  max-height: 100vh;
-}
-
-.logo {
-  display: block;
-  margin: 0 auto 2rem;
-}
-
-nav {
+<style>
+#app-root {
   width: 100%;
-  font-size: 12px;
-  text-align: center;
-  margin-top: 2rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
 }
 
-nav a.router-link-exact-active {
-  color: var(--color-text);
-}
-
-nav a.router-link-exact-active:hover {
-  background-color: transparent;
-}
-
-nav a {
-  display: inline-block;
-  padding: 0 1rem;
-  border-left: 1px solid var(--color-border);
-}
-
-nav a:first-of-type {
-  border: 0;
-}
-
-@media (min-width: 1024px) {
-  header {
-    display: flex;
-    place-items: center;
-    padding-right: calc(var(--section-gap) / 2);
-  }
-
-  .logo {
-    margin: 0 2rem 0 0;
-  }
-
-  header .wrapper {
-    display: flex;
-    place-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  nav {
-    text-align: left;
-    margin-left: -1rem;
-    font-size: 1rem;
-
-    padding: 1rem 0;
-    margin-top: 1rem;
-  }
+/* 主题切换按钮固定在右上角 */
+.theme-toggle {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1000;
 }
 </style>
