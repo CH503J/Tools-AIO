@@ -1,9 +1,9 @@
 :root {
   --bg-color: #ffffff;
-  --text-color: #222;
+  --text-color: #3a3a3a;
 }
 
 .dark {
-  --bg-color: #404040;
+  --bg-color: #3a3a3a;
   --text-color: #eee;
 }
