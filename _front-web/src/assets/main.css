@@ -1,23 +1,25 @@
 /* src/assets/main.css - 全局重置与布局 */
-* { box-sizing: border-box; }
+* {
+    box-sizing: border-box;
+}
 
 html, body, #app {
-  height: 100%;
-  margin: 0;
-  padding: 0;
+    height: 100%;
+    margin: 0;
+    padding: 0;
 }
 
 body {
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-  background-color: #000; /* 全站默认黑色背景（可改） */
-  color: #fff;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    background-color: #000; /* 全站默认黑色背景（可改） */
+    color: #fff;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 /* #app 是 Vue 挂载点，确保它是一个 flex 容器，页面内容能伸展 */
 #app {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
 }

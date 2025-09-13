@@ -1,12 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { RouterView } from 'vue-router'
-import {
-  NConfigProvider,
-  NButton,
-  darkTheme,
-  lightTheme
-} from 'naive-ui'
+import {computed, ref, watch} from 'vue'
+import {RouterView} from 'vue-router'
+import {darkTheme, lightTheme, NButton, NConfigProvider} from 'naive-ui'
 
 // 读取本地存储（没有就默认亮色）
 const stored = localStorage.getItem('isDark')
@@ -39,7 +34,7 @@ watch(isDark, (v) => {
       </div>
 
       <!-- 页面路由视图 -->
-      <RouterView />
+      <RouterView/>
     </div>
   </NConfigProvider>
 </template>
@@ -67,6 +62,7 @@ watch(isDark, (v) => {
   --bg-color: #ffffff;
   --text-color: #323232;
 }
+
 :root.dark {
   --bg-color: #323232;
   --text-color: #ffffff;

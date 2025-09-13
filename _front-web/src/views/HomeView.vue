@@ -5,8 +5,8 @@
       <p>这是一个最小首页占位。</p>
 
       <div class="icons">
-        <HomeIcon />
-        <CashIcon />
+        <HomeIcon/>
+        <CashIcon/>
       </div>
     </div>
   </main>
@@ -14,7 +14,7 @@
 
 <script setup lang="ts">
 import HomeIcon from "@/components/icons/HomeIcon.vue";
-import { CashOutline as CashIcon } from "@vicons/ionicons5";
+import {CashOutline as CashIcon} from "@vicons/ionicons5";
 </script>
 
 <style scoped>
