@@ -1,10 +1,10 @@
-package com.ch503j.workflow.controller;
+package com.ch503j.workflow.service.impl;
 
-import com.ch503j.common.pojo.dto.BaseResponse;
+import com.ch503j.common.exception.BusinessException;
 import com.ch503j.workflow.pojo.dto.TaskDto;
 import com.ch503j.workflow.pojo.vo.HistoryVO;
+import com.ch503j.workflow.service.WorkflowDemoService;
 import jakarta.annotation.Resource;
-import lombok.extern.slf4j.Slf4j;
 import org.flowable.bpmn.model.BpmnModel;
 import org.flowable.bpmn.model.FlowElement;
 import org.flowable.bpmn.model.UserTask;
@@ -15,34 +15,13 @@ import org.flowable.engine.task.Comment;
 import org.flowable.task.api.DelegationState;
 import org.flowable.task.api.Task;
 import org.flowable.task.api.history.HistoricTaskInstance;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * WorkflowController
- * <p>
- * 该控制器提供了基于 Flowable 的工作流操作接口，包括：
- * 1. 启动流程
- * 2. 查询用户待办任务
- * 3. 领取任务
- * 4. 完成任务
- * 5. 退回/释放任务
- * <p>
- * 核心概念说明：
- * - 流程实例(ProcessInstance)：流程引擎中运行的某个流程执行实例，每启动一次流程就会生成一个新的实例。
- * - 流程定义Key(processKey)：流程模型在引擎中的唯一标识，用于启动流程实例。
- * - 业务键(businessKey)：业务系统中用来标识具体业务对象的唯一标识，便于将流程实例和业务对象关联。
- * - 任务(Task)：流程执行过程中产生的具体操作节点，可以被用户领取和完成。
- * - 候选任务(Task Candidate)：任务未被任何人领取前，可以由候选用户或候选组领取。
- * - 领取任务(Claim)：将候选任务分配给具体用户，使其成为任务负责人。
- */
-
-@Slf4j
-@RestController
-@RequestMapping("/workflow")
-public class WorkflowController {
+@Service
+public class WorkflowDemoServiceImpl implements WorkflowDemoService {
 
     @Resource
     private RuntimeService runtimeService; // 流程运行服务，用于启动流程实例、查询流程状态等
@@ -59,36 +38,16 @@ public class WorkflowController {
     @Resource
     private RepositoryService repositoryService;
 
-    /**
-     * 启动流程
-     *
-     * @param processKey  流程定义的唯一标识Key
-     * @param businessKey 业务系统中用于关联业务对象的Key
-     * @param startUserId 启动流程的用户ID（在流程中作为发起人）
-     * @return 流程实例ID（用于后续查询流程状态或操作任务）
-     * <p>
-     * 说明：
-     * - identityService.setAuthenticatedUserId(startUserId) 用于设置当前操作用户，这个用户将作为流程发起人记录在流程实例中。
-     * - runtimeService.startProcessInstanceByKey 会根据流程定义Key创建一个新的流程实例。
-     */
-    @PostMapping("/start")
-    public BaseResponse<String> startProcess(@RequestParam String processKey,
-                                             @RequestParam String businessKey,
-                                             @RequestParam String startUserId) {
+
+    @Override
+    public String startProcess(String processKey, String businessKey, String startUserId) {
         identityService.setAuthenticatedUserId(startUserId);
         ProcessInstance instance = runtimeService.startProcessInstanceByKey(processKey, businessKey);
-        return BaseResponse.success("流程实例已开始流转", instance.getId());
+        return instance.getId();
     }
 
-
-    /**
-     * 查询候选组待办任务（针对候选组）
-     *
-     * @param userId 用户ID
-     * @return 用户可见的待办任务列表
-     */
-    @GetMapping("/candidate/{userId}")
-    public BaseResponse<List<TaskDto>> getCandidateTasks(@PathVariable String userId) {
+    @Override
+    public List<TaskDto> getCandidateTasks(String userId) {
         List<Task> tasks = taskService.createTaskQuery()
                 .or()
                 .taskAssignee(userId)        // 已认领的任务（分配给我）
@@ -116,28 +75,15 @@ public class WorkflowController {
             return dto;
         }).collect(Collectors.toList());
 
-        return BaseResponse.success(dtoList);
+        return dtoList;
     }
 
-
-    /**
-     * 转办任务（通过在主任务下挂载子任务来实现）
-     * Flowable 7.0.0.M2 版本
-     *
-     * @param taskId           待办任务id
-     * @param ownerId          当前委托人id（通常是主管）
-     * @param delegateToUserId 被委派人id
-     */
-    @PostMapping("/delegate")
-    public BaseResponse<String> delegateTask(
-            @RequestParam String taskId,
-            @RequestParam String ownerId,
-            @RequestParam String delegateToUserId
-    ) {
+    @Override
+    public String delegateTask(String taskId, String ownerId, String delegateToUserId) {
         // 查询当前任务
         Task task = taskService.createTaskQuery().taskId(taskId).singleResult();
         if (task == null) {
-            return BaseResponse.fail("任务不存在或已完成");
+            throw new BusinessException("任务不存在或已完成");
         }
 
         // 设置 owner（委托人）
@@ -151,38 +97,15 @@ public class WorkflowController {
         String message = String.format("任务由 %s 转办给 %s", ownerId, delegateToUserId);
         taskService.addComment(taskId, processInstanceId, message);
 
-        return BaseResponse.success("转办成功");
+        return "转办成功";
     }
 
-
-    /**
-     * 提交任务（审批）
-     * taskId 和 userId 必传，variables 可选
-     * nextAssignee 在研发主管分配和代理主管分配时必传
-     * approve 在主管审核稿件时必传
-     *
-     * @param taskId       待办任务id
-     * @param userId       审批人id
-     * @param variables    提交时携带的信息（审批人）
-     * @param nextAssignee 指定的产出节点经办候选人（研发人、代理人）
-     * @param approve      审稿是否通过
-     * @param comment      提交时备注
-     * @return 提交结果
-     */
-    @PostMapping("/complete")
-    public BaseResponse<String> completeTask(
-            @RequestParam String taskId,
-            @RequestParam String userId,
-            @RequestParam(required = false) Map<String, Object> variables,
-            @RequestParam(required = false) String nextAssignee, // 下一节点经办人
-            @RequestParam(required = false) Boolean approve,
-            @RequestParam(required = false) String comment // 提交备注
-    ) {
-
+    @Override
+    public String completeTask(String taskId, String userId, Map<String, Object> variables, String nextAssignee, Boolean approve, String comment) {
         // 1. 查询任务
         Task task = taskService.createTaskQuery().taskId(taskId).singleResult();
         if (task == null) {
-            return BaseResponse.fail("任务不存在或已完成");
+            throw new BusinessException("任务不存在或已完成");
         }
 
         // 2. 如果有批注，先加批注
@@ -210,7 +133,7 @@ public class WorkflowController {
 
             if ("true".equalsIgnoreCase(isApproveTask)) {
                 if (approve == null) {
-                    return BaseResponse.fail("审批任务必须提供 approve 参数");
+                    throw new BusinessException("审批任务必须提供 approve 参数");
                 }
                 if (variables == null) {
                     variables = new HashMap<>();
@@ -236,19 +159,11 @@ public class WorkflowController {
         } else {
             taskService.complete(taskId);
         }
-
-        return BaseResponse.success("任务已提交", taskId);
+        return "任务已提交";
     }
 
-    /**
-     * 查询流程实例的历史流转记录
-     *
-     * @param processInstanceId 流程实例ID
-     * @return 历史流转节点列表
-     */
-    @GetMapping("/history/{processInstanceId}")
-    public BaseResponse<List<HistoryVO>> getProcessHistory(@PathVariable String processInstanceId) {
-
+    @Override
+    public List<HistoryVO> getProcessHistory(String processInstanceId) {
         List<HistoryVO> dtoList = new ArrayList<>();
 
         // === 活动历史（节点执行） ===
@@ -319,7 +234,6 @@ public class WorkflowController {
                 HistoryVO::getStartTime,
                 Comparator.nullsLast(Comparator.naturalOrder())
         ));
-
-        return BaseResponse.success(dtoList);
+        return dtoList;
     }
 }
