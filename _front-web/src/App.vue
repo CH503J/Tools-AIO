@@ -1,4 +1,3 @@
-<!-- src/App.vue -->
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { RouterView } from 'vue-router'
@@ -9,27 +8,32 @@ import {
   lightTheme
 } from 'naive-ui'
 
-// 读 localStorage（如果没有则默认暗色）
+// 读取本地存储（没有就默认亮色）
 const stored = localStorage.getItem('isDark')
-const isDark = ref(stored ? stored === 'true' : true)
+const isDark = ref(stored ? stored === 'true' : false)
 
-// 计算出要传给 NConfigProvider 的 theme 对象
+// Naive UI 的主题对象
 const theme = computed(() => (isDark.value ? darkTheme : lightTheme))
 
-// 监听变化并持久化（方便刷新后保留）
+// 切换主题
+const toggleTheme = () => {
+  isDark.value = !isDark.value
+  console.log('切换主题:', isDark.value ? '暗色' : '亮色')
+}
+
+// 监听并持久化
 watch(isDark, (v) => {
-  console.log('[theme] isDark ->', v)
   localStorage.setItem('isDark', v ? 'true' : 'false')
+  document.documentElement.classList.toggle('dark', v) // 用 class 做全局 css 变量切换
 })
 </script>
 
 <template>
-  <!-- 使用 PascalCase 组件名，确保 <NConfigProvider> 是你导入的组件 -->
   <NConfigProvider :theme="theme">
     <div id="app-root">
       <!-- 固定在右上角的主题切换按钮 -->
       <div class="theme-toggle">
-        <NButton size="small" @click="isDark = !isDark">
+        <NButton size="small" tertiary @click="toggleTheme">
           {{ isDark ? '🌙 暗色' : '☀️ 亮色' }}
         </NButton>
       </div>
@@ -47,6 +51,7 @@ watch(isDark, (v) => {
   display: flex;
   flex-direction: column;
   position: relative;
+  transition: background-color 0.3s ease;
 }
 
 /* 主题切换按钮固定在右上角 */
@@ -55,5 +60,15 @@ watch(isDark, (v) => {
   top: 1rem;
   right: 1rem;
   z-index: 1000;
+}
+
+/* 提供全局变量，配合 Home.vue 使用 */
+:root {
+  --bg-color: #ffffff;
+  --text-color: #323232;
+}
+:root.dark {
+  --bg-color: #323232;
+  --text-color: #ffffff;
 }
 </style>
